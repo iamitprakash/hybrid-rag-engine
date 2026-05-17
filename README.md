@@ -84,6 +84,45 @@ Returns service health.
 
 Embeds and upserts the built-in sample corpus into Qdrant.
 
+### `POST /ingest`
+
+Chunks arbitrary documents, embeds each chunk, upserts the vectors into Qdrant, and appends the same chunks to the in-memory BM25 index.
+
+Request:
+
+```json
+{
+  "chunking": {
+    "chunk_size": 180,
+    "overlap": 30
+  },
+  "documents": [
+    {
+      "id": "architecture-note",
+      "title": "Architecture Note",
+      "content": "Long source document text...",
+      "source": "docs",
+      "metadata": {
+        "tenant": "demo"
+      }
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "documents": 1,
+  "chunks": 3
+}
+```
+
+### `GET /documents`
+
+Returns the active in-memory BM25 corpus. This is useful during local development to verify ingested chunks.
+
 ### `POST /search`
 
 Request:

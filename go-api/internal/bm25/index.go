@@ -5,11 +5,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"hybrid-rag-engine/go-api/internal/retrieval"
 )
 
 type Index struct {
+	mu        sync.RWMutex
 	docs      []retrieval.Document
 	docTokens []map[string]int
 	docFreq   map[string]int
@@ -19,9 +21,33 @@ type Index struct {
 var tokenPattern = regexp.MustCompile(`[a-zA-Z0-9]+`)
 
 func NewIndex(docs []retrieval.Document) *Index {
-	idx := &Index{docs: docs, docFreq: map[string]int{}}
+	idx := &Index{docFreq: map[string]int{}}
+	idx.AddDocuments(docs)
+	return idx
+}
+
+func (idx *Index) AddDocuments(docs []retrieval.Document) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	idx.docs = append(idx.docs, docs...)
+	idx.rebuildLocked()
+}
+
+func (idx *Index) Documents() []retrieval.Document {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	docs := make([]retrieval.Document, len(idx.docs))
+	copy(docs, idx.docs)
+	return docs
+}
+
+func (idx *Index) rebuildLocked() {
+	idx.docTokens = nil
+	idx.docFreq = map[string]int{}
 	totalLen := 0
-	for _, doc := range docs {
+	for _, doc := range idx.docs {
 		tokens := tokenize(doc.Title + " " + doc.Content)
 		counts := map[string]int{}
 		for _, token := range tokens {
@@ -33,13 +59,15 @@ func NewIndex(docs []retrieval.Document) *Index {
 		totalLen += len(tokens)
 		idx.docTokens = append(idx.docTokens, counts)
 	}
-	if len(docs) > 0 {
-		idx.avgLen = float64(totalLen) / float64(len(docs))
+	if len(idx.docs) > 0 {
+		idx.avgLen = float64(totalLen) / float64(len(idx.docs))
 	}
-	return idx
 }
 
 func (idx *Index) Search(query string, limit int) []retrieval.Document {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
 	if limit <= 0 {
 		limit = 10
 	}

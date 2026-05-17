@@ -28,7 +28,7 @@ func Run() {
 		llm.NewSynthesizer(),
 	)
 
-	router := api.NewRouter(orchestrator, aiClient, vectorClient, corpus)
+	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, corpus)
 	log.Println("Go API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)

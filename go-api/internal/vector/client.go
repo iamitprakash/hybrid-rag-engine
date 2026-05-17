@@ -3,6 +3,7 @@ package vector
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,6 +29,19 @@ func NewClient(baseURL string, collection string, dimension int) *Client {
 }
 
 func (c *Client) EnsureCollection(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/collections/"+c.collection, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+
 	payload := map[string]any{
 		"vectors": map[string]any{
 			"size":     c.dimension,
@@ -38,10 +52,13 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 }
 
 func (c *Client) Upsert(ctx context.Context, docs []retrieval.Document, vectors [][]float32) error {
+	if len(docs) != len(vectors) {
+		return fmt.Errorf("documents and vectors length mismatch: %d != %d", len(docs), len(vectors))
+	}
 	points := make([]map[string]any, 0, len(docs))
 	for i, doc := range docs {
 		points = append(points, map[string]any{
-			"id":     doc.ID,
+			"id":     pointID(doc.ID),
 			"vector": vectors[i],
 			"payload": map[string]any{
 				"id":       doc.ID,
@@ -110,4 +127,12 @@ func (c *Client) request(ctx context.Context, method string, path string, payloa
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func pointID(id string) string {
+	sum := sha1.Sum([]byte(id))
+	bytes := sum[:16]
+	bytes[6] = (bytes[6] & 0x0f) | 0x50
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
