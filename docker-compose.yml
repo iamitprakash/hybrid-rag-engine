@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  go-api:
+    build:
+      context: ./go-api
+    environment:
+      AI_SERVICE_URL: http://ai-service:8000
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: documents
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ai-service
+      - qdrant
+
+  ai-service:
+    build:
+      context: ./ai-service
+    environment:
+      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      RERANKER_MODEL: cross-encoder/ms-marco-MiniLM-L-6-v2
+      EMBEDDING_DIMENSION: 384
+      DISABLE_MODELS: "false"
+    ports:
+      - "8000:8000"
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+volumes:
+  qdrant-data:

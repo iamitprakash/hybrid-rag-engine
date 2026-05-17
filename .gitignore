@@ -1,0 +1,10 @@
+.DS_Store
+.env.local
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+bin/
+coverage.out
+qdrant_storage/
