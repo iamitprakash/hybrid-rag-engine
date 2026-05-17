@@ -16,10 +16,20 @@ type SearchRequest struct {
 }
 
 type SearchResponse struct {
-	Query     string     `json:"query"`
-	Answer    string     `json:"answer"`
-	Documents []Document `json:"documents"`
-	Trace     Trace      `json:"trace"`
+	Query     string          `json:"query"`
+	Answer    string          `json:"answer"`
+	Documents []Document      `json:"documents"`
+	Trace     Trace           `json:"trace"`
+	Grounding GroundingReport `json:"grounding,omitempty"`
+}
+
+type GroundingReport struct {
+	ContextDocumentCount int      `json:"context_document_count"`
+	ContextTokenCount    int      `json:"context_token_count"`
+	AnswerTokenCount     int      `json:"answer_token_count"`
+	GroundedTokenRatio   float64  `json:"grounded_token_ratio"`
+	UnsupportedTerms     []string `json:"unsupported_terms,omitempty"`
+	HallucinationRisk    string   `json:"hallucination_risk"`
 }
 
 type Trace struct {

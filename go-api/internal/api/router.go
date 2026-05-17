@@ -11,6 +11,8 @@ import (
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/chunking"
 	"hybrid-rag-engine/go-api/internal/metadata"
+	"hybrid-rag-engine/go-api/internal/metrics"
+	"hybrid-rag-engine/go-api/internal/quality"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/vector"
 )
@@ -20,7 +22,7 @@ type ingestRequest struct {
 	Chunking  chunking.Options       `json:"chunking"`
 }
 
-func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, corpus []retrieval.Document) *gin.Engine {
+func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, metricsRecorder *metrics.Recorder, corpus []retrieval.Document) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
@@ -37,15 +39,20 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 		var cached retrieval.SearchResponse
 		if ok, err := cacheClient.GetJSON(c.Request.Context(), key, &cached); err == nil && ok {
 			cached.Trace.CacheHit = true
+			metricsRecorder.RecordCacheHit()
 			c.JSON(http.StatusOK, cached)
 			return
 		}
 
+		started := time.Now()
 		resp, err := orchestrator.SearchWithFilters(c.Request.Context(), req)
 		if err != nil {
+			metricsRecorder.RecordError()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		resp.Grounding = quality.Evaluate(resp.Answer, resp.Documents)
+		metricsRecorder.RecordSearch(time.Since(started), resp.Grounding.GroundedTokenRatio, resp.Grounding.HallucinationRisk)
 		_ = cacheClient.SetJSON(c.Request.Context(), key, resp)
 		c.JSON(http.StatusOK, resp)
 	})
@@ -162,6 +169,10 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			"documents": docs,
 			"store":     "memory",
 		})
+	})
+
+	router.GET("/metrics", func(c *gin.Context) {
+		c.JSON(http.StatusOK, metricsRecorder.Snapshot())
 	})
 
 	return router

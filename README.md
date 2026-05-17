@@ -140,6 +140,21 @@ Tracing is disabled by default. When enabled, the Go service emits spans for emb
 
 Returns service health.
 
+### `GET /metrics`
+
+Returns in-process retrieval quality and operational counters:
+
+```json
+{
+  "search_requests": 10,
+  "search_errors": 0,
+  "cache_hits": 3,
+  "average_latency_ms": 84,
+  "average_grounded_ratio": 0.76,
+  "high_risk_grounding_hits": 1
+}
+```
+
 ### `POST /ingest/sample`
 
 Embeds and upserts the built-in sample corpus into Qdrant.
@@ -211,11 +226,20 @@ Response:
     "fused_hits": 5,
     "reranked_hits": 5,
     "cache_hit": false
+  },
+  "grounding": {
+    "context_document_count": 5,
+    "context_token_count": 180,
+    "answer_token_count": 42,
+    "grounded_token_ratio": 0.78,
+    "unsupported_terms": ["example"],
+    "hallucination_risk": "low"
   }
 }
 ```
 
 Filters are exact-match constraints. `source` and `id` map to top-level document fields; other keys map to document metadata.
+The `grounding` block is a lightweight hallucination risk signal based on answer-term support in retrieved context. It is not a replacement for human review, but it is useful for experiments and regression tracking.
 
 ### `POST /search/stream`
 
@@ -257,4 +281,6 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add retrieval quality metrics and hallucination checks.
+- Add authenticated multi-tenant indexing.
+- Add async ingestion jobs for large corpora.
+- Add evaluation datasets and retrieval regression reports.
