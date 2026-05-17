@@ -51,6 +51,15 @@ curl -X POST http://localhost:8080/search \
   -d '{"query":"retrieval orchestration","top_k":5,"filters":{"tenant":"demo","source":"docs"}}'
 ```
 
+Run an authenticated tenant-scoped search:
+
+```bash
+curl -X POST http://localhost:8080/search \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: secret-a' \
+  -d '{"query":"retrieval orchestration","top_k":5}'
+```
+
 Stream a grounded answer with server-sent events:
 
 ```bash
@@ -133,6 +142,14 @@ OTEL_TRACES_EXPORTER=stdout
 ```
 
 Tracing is disabled by default. When enabled, the Go service emits spans for embedding generation, BM25 retrieval, vector retrieval, rank fusion, reranking, and synthesis.
+
+Enable authenticated multi-tenant isolation:
+
+```bash
+TENANT_API_KEYS=tenant-a:secret-a,tenant-b:secret-b
+```
+
+When configured, the API expects `X-API-Key` on every endpoint except `/health`. The API key resolves to a tenant, ingestion stamps that tenant into document metadata, and retrieval automatically scopes results to that tenant.
 
 ## API
 

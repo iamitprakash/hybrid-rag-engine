@@ -58,7 +58,7 @@ func (c *Client) Upsert(ctx context.Context, docs []retrieval.Document, vectors 
 	points := make([]map[string]any, 0, len(docs))
 	for i, doc := range docs {
 		points = append(points, map[string]any{
-			"id":     pointID(doc.ID),
+			"id":     scopedPointID(doc),
 			"vector": vectors[i],
 			"payload": map[string]any{
 				"id":       doc.ID,
@@ -158,4 +158,11 @@ func pointID(id string) string {
 	bytes[6] = (bytes[6] & 0x0f) | 0x50
 	bytes[8] = (bytes[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+}
+
+func scopedPointID(doc retrieval.Document) string {
+	if doc.Metadata != nil && doc.Metadata["tenant"] != "" {
+		return pointID(doc.Metadata["tenant"] + ":" + doc.ID)
+	}
+	return pointID(doc.ID)
 }

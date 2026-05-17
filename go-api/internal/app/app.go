@@ -14,6 +14,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/metrics"
 	"hybrid-rag-engine/go-api/internal/observability"
 	"hybrid-rag-engine/go-api/internal/retrieval"
+	"hybrid-rag-engine/go-api/internal/tenantauth"
 	"hybrid-rag-engine/go-api/internal/vector"
 )
 
@@ -37,6 +38,7 @@ func Run() {
 	redisURL := env("REDIS_URL", "")
 	cacheTTL := durationEnv("CACHE_TTL", 5*time.Minute)
 	postgresDSN := env("POSTGRES_DSN", "")
+	tenantAPIKeys := env("TENANT_API_KEYS", "")
 
 	corpus := retrieval.SampleDocuments()
 	bm25Index := bm25.NewIndex(corpus)
@@ -70,8 +72,9 @@ func Run() {
 	defer metadataStore.Close()
 
 	metricsRecorder := metrics.NewRecorder()
+	auth := tenantauth.New(tenantAPIKeys)
 
-	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, metricsRecorder, corpus)
+	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, metricsRecorder, auth, corpus)
 	log.Println("Go API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)

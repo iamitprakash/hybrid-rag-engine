@@ -3,6 +3,8 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -93,7 +95,7 @@ ON CONFLICT (id) DO UPDATE SET
 	source = EXCLUDED.source,
 	metadata = EXCLUDED.metadata,
 	updated_at = EXCLUDED.updated_at
-`, doc.ID, doc.Title, doc.Content, doc.Source, metadataJSON, time.Now().UTC())
+`, scopedID(doc.Metadata, doc.ID), doc.Title, doc.Content, doc.Source, metadataJSON, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -123,7 +125,7 @@ ON CONFLICT (id) DO UPDATE SET
 	content = EXCLUDED.content,
 	source = EXCLUDED.source,
 	metadata = EXCLUDED.metadata
-`, chunk.ID, documentID, chunk.Title, chunk.Content, chunk.Source, metadataJSON)
+`, scopedID(chunk.Metadata, chunk.ID), scopedID(chunk.Metadata, documentID), chunk.Title, chunk.Content, chunk.Source, metadataJSON)
 		if err != nil {
 			return err
 		}
@@ -131,19 +133,26 @@ ON CONFLICT (id) DO UPDATE SET
 	return nil
 }
 
-func (s *Store) ListChunks(ctx context.Context, limit int) ([]retrieval.Document, error) {
+func (s *Store) ListChunks(ctx context.Context, limit int, tenant string) ([]retrieval.Document, error) {
 	if !s.Enabled() {
 		return nil, nil
 	}
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	rows, err := s.pool.Query(ctx, `
+	query := `
 SELECT id, title, content, COALESCE(source, ''), metadata
 FROM chunks
-ORDER BY created_at DESC
-LIMIT $1
-`, limit)
+`
+	args := []any{}
+	if tenant != "" {
+		query += `WHERE metadata->>'tenant' = $1 `
+		args = append(args, tenant)
+	}
+	query += `ORDER BY created_at DESC `
+	args = append(args, limit)
+	query += `LIMIT $` + itoa(len(args))
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +170,31 @@ LIMIT $1
 				return nil, err
 			}
 		}
+		doc.ID = unscopedID(doc.Metadata, doc.ID)
 		docs = append(docs, doc)
 	}
 	return docs, rows.Err()
+}
+
+func scopedID(metadata map[string]string, id string) string {
+	if metadata != nil && metadata["tenant"] != "" {
+		return metadata["tenant"] + ":" + id
+	}
+	return id
+}
+
+func unscopedID(metadata map[string]string, id string) string {
+	if metadata == nil {
+		return id
+	}
+	tenant := metadata["tenant"]
+	prefix := tenant + ":"
+	if tenant != "" && strings.HasPrefix(id, prefix) {
+		return strings.TrimPrefix(id, prefix)
+	}
+	return id
+}
+
+func itoa(i int) string {
+	return strconv.Itoa(i)
 }

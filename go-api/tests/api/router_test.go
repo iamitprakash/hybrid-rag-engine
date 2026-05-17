@@ -15,6 +15,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
 	"hybrid-rag-engine/go-api/internal/retrieval"
+	"hybrid-rag-engine/go-api/internal/tenantauth"
 )
 
 type fakeVector struct{}
@@ -56,7 +57,7 @@ func TestSearchEndpointAddsGroundingAndCache(t *testing.T) {
 	aiClient.SetHTTPClient(&http.Client{Transport: fakeAITransport{}})
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), nil)
+	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), tenantauth.New(""), nil)
 
 	body := []byte(`{"query":"hybrid retrieval","top_k":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewReader(body))
@@ -73,6 +74,23 @@ func TestSearchEndpointAddsGroundingAndCache(t *testing.T) {
 	}
 	if resp.Grounding.HallucinationRisk == "" {
 		t.Fatal("expected grounding report")
+	}
+}
+
+func TestSearchRequiresTenantAPIKeyWhenConfigured(t *testing.T) {
+	bm25Index := bm25.NewIndex(nil)
+	aiClient := retrieval.NewAIClient("http://fake", 0)
+	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
+	cacheClient, _ := cache.New("", 0)
+	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), tenantauth.New("tenant-a:secret"), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewBufferString(`{"query":"hybrid retrieval"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
 
