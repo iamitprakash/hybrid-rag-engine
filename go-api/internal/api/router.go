@@ -11,13 +11,13 @@ import (
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/chunking"
 	"hybrid-rag-engine/go-api/internal/evaluation"
+	"hybrid-rag-engine/go-api/internal/ingest"
 	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
 	"hybrid-rag-engine/go-api/internal/quality"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/tenantauth"
-	"hybrid-rag-engine/go-api/internal/vector"
 )
 
 type ingestRequest struct {
@@ -25,7 +25,7 @@ type ingestRequest struct {
 	Chunking  chunking.Options       `json:"chunking"`
 }
 
-func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, metricsRecorder *metrics.Recorder, jobManager *jobs.Manager, auth *tenantauth.Auth, corpus []retrieval.Document) *gin.Engine {
+func NewRouter(orchestrator *retrieval.Orchestrator, processor *ingest.Processor, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, metricsRecorder *metrics.Recorder, jobManager *jobs.Manager, auth *tenantauth.Auth, corpus []retrieval.Document) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(func(c *gin.Context) {
@@ -130,7 +130,7 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 
 		tenant := tenantFromContext(c)
 		docs := withTenant(corpus, tenant)
-		if err := embedAndUpsert(ctx, ai, vectorClient, docs); err != nil {
+		if err := processor.Process(ctx, docs); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -163,7 +163,7 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if err := embedAndUpsert(ctx, ai, vectorClient, chunks); err != nil {
+		if err := processor.Process(ctx, chunks); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -192,7 +192,7 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			if err := metadataStore.UpsertRawDocuments(ctx, req.Documents); err != nil {
 				return jobs.IngestResult{}, err
 			}
-			if err := embedAndUpsert(ctx, ai, vectorClient, chunks); err != nil {
+			if err := processor.Process(ctx, chunks); err != nil {
 				return jobs.IngestResult{}, err
 			}
 			if err := metadataStore.UpsertChunks(ctx, chunks); err != nil {
@@ -363,19 +363,4 @@ func documentMatchesFilters(doc retrieval.Document, filters map[string]string) b
 		}
 	}
 	return true
-}
-
-func embedAndUpsert(ctx context.Context, ai *retrieval.AIClient, vectorClient *vector.Client, docs []retrieval.Document) error {
-	if err := vectorClient.EnsureCollection(ctx); err != nil {
-		return err
-	}
-	vectors := make([][]float32, 0, len(docs))
-	for _, doc := range docs {
-		embedding, err := ai.Embed(doc.Title + "\n" + doc.Content)
-		if err != nil {
-			return err
-		}
-		vectors = append(vectors, embedding)
-	}
-	return vectorClient.Upsert(ctx, docs, vectors)
 }

@@ -4,11 +4,13 @@ import (
 	"context"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"hybrid-rag-engine/go-api/internal/api"
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
+	"hybrid-rag-engine/go-api/internal/ingest"
 	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/llm"
 	"hybrid-rag-engine/go-api/internal/metadata"
@@ -40,6 +42,8 @@ func Run() {
 	cacheTTL := durationEnv("CACHE_TTL", 5*time.Minute)
 	postgresDSN := env("POSTGRES_DSN", "")
 	tenantAPIKeys := env("TENANT_API_KEYS", "")
+	ingestBatchSize := intEnv("INGEST_BATCH_SIZE", 16)
+	ingestWorkers := intEnv("INGEST_WORKERS", 4)
 
 	corpus := retrieval.SampleDocuments()
 	bm25Index := bm25.NewIndex(corpus)
@@ -81,8 +85,9 @@ func Run() {
 	defer jobStore.Close()
 	jobManager := jobs.NewManager(jobStore)
 	auth := tenantauth.New(tenantAPIKeys)
+	processor := ingest.NewProcessor(aiClient, vectorClient, ingestBatchSize, ingestWorkers)
 
-	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, metricsRecorder, jobManager, auth, corpus)
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, metadataStore, metricsRecorder, jobManager, auth, corpus)
 	log.Println("Go API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)
@@ -106,4 +111,16 @@ func env(key string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func intEnv(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }

@@ -159,6 +159,15 @@ TENANT_API_KEYS=tenant-a:secret-a,tenant-b:secret-b
 
 When configured, the API expects `X-API-Key` on every endpoint except `/health`. The API key resolves to a tenant, ingestion stamps that tenant into document metadata, and retrieval automatically scopes results to that tenant.
 
+Tune batched ingestion worker pools:
+
+```bash
+INGEST_BATCH_SIZE=16
+INGEST_WORKERS=4
+```
+
+The Go service embeds documents in batches and processes each batch with a bounded worker pool before upserting vectors.
+
 ## API
 
 ### `GET /health`
@@ -350,5 +359,4 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add batched worker pools for embedding-heavy ingest workloads.
 - Add external trace exporters and metrics backends.

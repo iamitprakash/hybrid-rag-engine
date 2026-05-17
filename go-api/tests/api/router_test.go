@@ -12,6 +12,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/api"
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
+	"hybrid-rag-engine/go-api/internal/ingest"
 	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
@@ -57,8 +58,9 @@ func TestSearchEndpointAddsGroundingAndCache(t *testing.T) {
 	aiClient := retrieval.NewAIClient("http://fake", 0)
 	aiClient.SetHTTPClient(&http.Client{Transport: fakeAITransport{}})
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
+	processor := ingest.NewProcessor(aiClient, fakeVectorWriterAdapter{}, 2, 1)
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New(""), nil)
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New(""), nil)
 
 	body := []byte(`{"query":"hybrid retrieval","top_k":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewReader(body))
@@ -82,8 +84,9 @@ func TestSearchRequiresTenantAPIKeyWhenConfigured(t *testing.T) {
 	bm25Index := bm25.NewIndex(nil)
 	aiClient := retrieval.NewAIClient("http://fake", 0)
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
+	processor := ingest.NewProcessor(aiClient, fakeVectorWriterAdapter{}, 2, 1)
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New("tenant-a:secret"), nil)
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New("tenant-a:secret"), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewBufferString(`{"query":"hybrid retrieval"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -101,4 +104,12 @@ func jsonResponse(body string) *http.Response {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
+}
+
+type fakeVectorWriterAdapter struct{}
+
+func (fakeVectorWriterAdapter) EnsureCollection(context.Context) error { return nil }
+
+func (fakeVectorWriterAdapter) Upsert(context.Context, []retrieval.Document, [][]float32) error {
+	return nil
 }

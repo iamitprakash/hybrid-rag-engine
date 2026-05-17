@@ -16,6 +16,8 @@ services:
       POSTGRES_DSN: postgres://rag:rag@postgres:5432/rag?sslmode=disable
       OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
       TENANT_API_KEYS: ${TENANT_API_KEYS:-}
+      INGEST_BATCH_SIZE: ${INGEST_BATCH_SIZE:-16}
+      INGEST_WORKERS: ${INGEST_WORKERS:-4}
     ports:
       - "8080:8080"
     depends_on:
