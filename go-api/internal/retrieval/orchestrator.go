@@ -8,11 +8,11 @@ import (
 )
 
 type BM25Searcher interface {
-	Search(query string, limit int) []Document
+	Search(query string, limit int, filters map[string]string) []Document
 }
 
 type VectorSearcher interface {
-	Search(ctx context.Context, embedding []float32, limit int) ([]Document, error)
+	Search(ctx context.Context, embedding []float32, limit int, filters map[string]string) ([]Document, error)
 }
 
 type Synthesizer interface {
@@ -32,7 +32,7 @@ func NewOrchestrator(bm25 BM25Searcher, vector VectorSearcher, ai *AIClient, syn
 }
 
 func (o *Orchestrator) Search(ctx context.Context, query string, topK int) (SearchResponse, error) {
-	reranked, trace, err := o.Retrieve(ctx, query, topK)
+	reranked, trace, err := o.Retrieve(ctx, query, topK, nil)
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -50,7 +50,7 @@ func (o *Orchestrator) Search(ctx context.Context, query string, topK int) (Sear
 }
 
 func (o *Orchestrator) Stream(ctx context.Context, query string, topK int) (<-chan string, <-chan error, []Document, Trace, error) {
-	reranked, trace, err := o.Retrieve(ctx, query, topK)
+	reranked, trace, err := o.Retrieve(ctx, query, topK, nil)
 	if err != nil {
 		return nil, nil, nil, Trace{}, err
 	}
@@ -58,7 +58,34 @@ func (o *Orchestrator) Stream(ctx context.Context, query string, topK int) (<-ch
 	return tokens, errs, reranked, trace, nil
 }
 
-func (o *Orchestrator) Retrieve(ctx context.Context, query string, topK int) ([]Document, Trace, error) {
+func (o *Orchestrator) SearchWithFilters(ctx context.Context, req SearchRequest) (SearchResponse, error) {
+	reranked, trace, err := o.Retrieve(ctx, req.Query, req.TopK, req.Filters)
+	if err != nil {
+		return SearchResponse{}, err
+	}
+	answer, err := o.synthesizer.Synthesize(ctx, req.Query, reranked)
+	if err != nil {
+		return SearchResponse{}, err
+	}
+
+	return SearchResponse{
+		Query:     req.Query,
+		Answer:    answer,
+		Documents: reranked,
+		Trace:     trace,
+	}, nil
+}
+
+func (o *Orchestrator) StreamWithFilters(ctx context.Context, req SearchRequest) (<-chan string, <-chan error, []Document, Trace, error) {
+	reranked, trace, err := o.Retrieve(ctx, req.Query, req.TopK, req.Filters)
+	if err != nil {
+		return nil, nil, nil, Trace{}, err
+	}
+	tokens, errs := o.synthesizer.Stream(ctx, req.Query, reranked)
+	return tokens, errs, reranked, trace, nil
+}
+
+func (o *Orchestrator) Retrieve(ctx context.Context, query string, topK int, filters map[string]string) ([]Document, Trace, error) {
 	if topK <= 0 {
 		topK = 5
 	}
@@ -76,12 +103,12 @@ func (o *Orchestrator) Retrieve(ctx context.Context, query string, topK int) ([]
 
 	go func() {
 		defer wg.Done()
-		bm25Docs = o.bm25.Search(query, 25)
+		bm25Docs = o.bm25.Search(query, 25, filters)
 	}()
 
 	go func() {
 		defer wg.Done()
-		vectorDocs, vectorErr = o.vector.Search(ctx, embedding, 25)
+		vectorDocs, vectorErr = o.vector.Search(ctx, embedding, 25, filters)
 	}()
 
 	wg.Wait()

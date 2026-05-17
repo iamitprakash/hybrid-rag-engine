@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"hybrid-rag-engine/go-api/internal/bm25"
+	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/chunking"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/vector"
@@ -18,7 +19,7 @@ type ingestRequest struct {
 	Chunking  chunking.Options       `json:"chunking"`
 }
 
-func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, corpus []retrieval.Document) *gin.Engine {
+func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, corpus []retrieval.Document) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
@@ -31,11 +32,20 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		resp, err := orchestrator.Search(c.Request.Context(), req.Query, req.TopK)
+		key := cache.Key("search", req)
+		var cached retrieval.SearchResponse
+		if ok, err := cacheClient.GetJSON(c.Request.Context(), key, &cached); err == nil && ok {
+			cached.Trace.CacheHit = true
+			c.JSON(http.StatusOK, cached)
+			return
+		}
+
+		resp, err := orchestrator.SearchWithFilters(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		_ = cacheClient.SetJSON(c.Request.Context(), key, resp)
 		c.JSON(http.StatusOK, resp)
 	})
 
@@ -45,7 +55,7 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		tokens, errs, docs, trace, err := orchestrator.Stream(c.Request.Context(), req.Query, req.TopK)
+		tokens, errs, docs, trace, err := orchestrator.StreamWithFilters(c.Request.Context(), req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

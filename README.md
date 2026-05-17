@@ -20,6 +20,7 @@ Client Query
 - `go-api`: Gin API gateway, retrieval orchestration, concurrency, reciprocal-rank fusion, and response synthesis.
 - `ai-service`: FastAPI service for embeddings and reranking with Sentence Transformers.
 - `qdrant`: Vector database for semantic search.
+- `redis`: Optional query cache for repeated non-stream search requests.
 
 ## Quick Start
 
@@ -39,6 +40,14 @@ Run a hybrid search:
 curl -X POST http://localhost:8080/search \
   -H 'Content-Type: application/json' \
   -d '{"query":"how does hybrid retrieval improve rag quality?","top_k":5}'
+```
+
+Run a filtered search:
+
+```bash
+curl -X POST http://localhost:8080/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"retrieval orchestration","top_k":5,"filters":{"tenant":"demo","source":"docs"}}'
 ```
 
 Stream a grounded answer with server-sent events:
@@ -99,6 +108,15 @@ LLM_MODEL=llama-3.1-8b-instant
 
 If `LLM_API_KEY` is empty, the Go service uses a deterministic local synthesis fallback.
 
+Configure Redis query caching:
+
+```bash
+REDIS_URL=redis://localhost:6379/0
+CACHE_TTL=5m
+```
+
+If `REDIS_URL` is empty or invalid, search still works without caching.
+
 ## API
 
 ### `GET /health`
@@ -155,7 +173,11 @@ Request:
 ```json
 {
   "query": "how does reranking improve retrieval precision?",
-  "top_k": 5
+  "top_k": 5,
+  "filters": {
+    "tenant": "demo",
+    "source": "docs"
+  }
 }
 ```
 
@@ -170,10 +192,13 @@ Response:
     "bm25_hits": 3,
     "vector_hits": 5,
     "fused_hits": 5,
-    "reranked_hits": 5
+    "reranked_hits": 5,
+    "cache_hit": false
   }
 }
 ```
+
+Filters are exact-match constraints. `source` and `id` map to top-level document fields; other keys map to document metadata.
 
 ### `POST /search/stream`
 
@@ -214,7 +239,6 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add metadata filtering.
-- Add PostgreSQL for document metadata and Redis for query cache.
+- Add PostgreSQL for durable document metadata.
 - Add OpenTelemetry spans for embedding, BM25, vector search, fusion, reranking, and synthesis.
 - Add retrieval quality metrics and hallucination checks.

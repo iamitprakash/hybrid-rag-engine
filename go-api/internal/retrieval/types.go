@@ -10,8 +10,9 @@ type Document struct {
 }
 
 type SearchRequest struct {
-	Query string `json:"query" binding:"required"`
-	TopK  int    `json:"top_k"`
+	Query   string            `json:"query" binding:"required"`
+	TopK    int               `json:"top_k"`
+	Filters map[string]string `json:"filters,omitempty"`
 }
 
 type SearchResponse struct {
@@ -22,10 +23,11 @@ type SearchResponse struct {
 }
 
 type Trace struct {
-	BM25Hits     int `json:"bm25_hits"`
-	VectorHits   int `json:"vector_hits"`
-	FusedHits    int `json:"fused_hits"`
-	RerankedHits int `json:"reranked_hits"`
+	BM25Hits     int  `json:"bm25_hits"`
+	VectorHits   int  `json:"vector_hits"`
+	FusedHits    int  `json:"fused_hits"`
+	RerankedHits int  `json:"reranked_hits"`
+	CacheHit     bool `json:"cache_hit"`
 }
 
 func SampleDocuments() []Document {

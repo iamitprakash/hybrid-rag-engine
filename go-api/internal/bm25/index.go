@@ -64,7 +64,7 @@ func (idx *Index) rebuildLocked() {
 	}
 }
 
-func (idx *Index) Search(query string, limit int) []retrieval.Document {
+func (idx *Index) Search(query string, limit int, filters map[string]string) []retrieval.Document {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
@@ -74,6 +74,9 @@ func (idx *Index) Search(query string, limit int) []retrieval.Document {
 	queryTokens := tokenize(query)
 	results := make([]retrieval.Document, 0, len(idx.docs))
 	for i, doc := range idx.docs {
+		if !matchesFilters(doc, filters) {
+			continue
+		}
 		score := idx.score(queryTokens, idx.docTokens[i])
 		if score > 0 {
 			candidate := doc
@@ -88,6 +91,29 @@ func (idx *Index) Search(query string, limit int) []retrieval.Document {
 		return results[:limit]
 	}
 	return results
+}
+
+func matchesFilters(doc retrieval.Document, filters map[string]string) bool {
+	if len(filters) == 0 {
+		return true
+	}
+	for key, value := range filters {
+		switch key {
+		case "source":
+			if doc.Source != value {
+				return false
+			}
+		case "id":
+			if doc.ID != value {
+				return false
+			}
+		default:
+			if doc.Metadata == nil || doc.Metadata[key] != value {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (idx *Index) score(queryTokens []string, doc map[string]int) float64 {

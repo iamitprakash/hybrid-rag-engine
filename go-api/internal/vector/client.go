@@ -72,7 +72,7 @@ func (c *Client) Upsert(ctx context.Context, docs []retrieval.Document, vectors 
 	return c.request(ctx, http.MethodPut, "/collections/"+c.collection+"/points?wait=true", map[string]any{"points": points}, nil)
 }
 
-func (c *Client) Search(ctx context.Context, embedding []float32, limit int) ([]retrieval.Document, error) {
+func (c *Client) Search(ctx context.Context, embedding []float32, limit int, filters map[string]string) ([]retrieval.Document, error) {
 	var out struct {
 		Result []struct {
 			Score   float64 `json:"score"`
@@ -86,6 +86,9 @@ func (c *Client) Search(ctx context.Context, embedding []float32, limit int) ([]
 		} `json:"result"`
 	}
 	payload := map[string]any{"vector": embedding, "limit": limit, "with_payload": true}
+	if qdrantFilter := buildFilter(filters); qdrantFilter != nil {
+		payload["filter"] = qdrantFilter
+	}
 	if err := c.request(ctx, http.MethodPost, "/collections/"+c.collection+"/points/search", payload, &out); err != nil {
 		return nil, err
 	}
@@ -101,6 +104,26 @@ func (c *Client) Search(ctx context.Context, embedding []float32, limit int) ([]
 		})
 	}
 	return docs, nil
+}
+
+func buildFilter(filters map[string]string) map[string]any {
+	if len(filters) == 0 {
+		return nil
+	}
+	must := make([]map[string]any, 0, len(filters))
+	for key, value := range filters {
+		payloadKey := "metadata." + key
+		if key == "source" || key == "id" {
+			payloadKey = key
+		}
+		must = append(must, map[string]any{
+			"key": payloadKey,
+			"match": map[string]any{
+				"value": value,
+			},
+		})
+	}
+	return map[string]any{"must": must}
 }
 
 func (c *Client) request(ctx context.Context, method string, path string, payload any, out any) error {
