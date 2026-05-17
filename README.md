@@ -68,6 +68,14 @@ curl -N -X POST http://localhost:8080/search/stream \
   -d '{"query":"how does hybrid retrieval improve rag quality?","top_k":5}'
 ```
 
+Queue a large ingest job asynchronously:
+
+```bash
+curl -X POST http://localhost:8080/ingest/async \
+  -H 'Content-Type: application/json' \
+  -d '{"documents":[{"id":"doc-1","title":"Architecture","content":"Long source text"}]}'
+```
+
 ## Local Development
 
 Run the Python service:
@@ -211,6 +219,27 @@ Response:
 }
 ```
 
+### `POST /ingest/async`
+
+Starts the same ingestion pipeline in a background job and returns `202 Accepted` with a job descriptor.
+
+### `GET /jobs/:id`
+
+Returns job state for async ingestion:
+
+```json
+{
+  "id": "7ab3...",
+  "type": "ingest",
+  "tenant": "tenant-a",
+  "status": "completed",
+  "result": {
+    "documents": 1,
+    "chunks": 3
+  }
+}
+```
+
 ### `GET /documents`
 
 Returns the active chunk corpus. If PostgreSQL is configured, this reads durable metadata from Postgres; otherwise it returns the in-memory BM25 corpus.
@@ -298,6 +327,6 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add authenticated multi-tenant indexing.
-- Add async ingestion jobs for large corpora.
 - Add evaluation datasets and retrieval regression reports.
+- Add persistent job storage for async ingestion.
+- Add batched worker pools for embedding-heavy ingest workloads.

@@ -9,6 +9,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/api"
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
+	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/llm"
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
@@ -72,9 +73,10 @@ func Run() {
 	defer metadataStore.Close()
 
 	metricsRecorder := metrics.NewRecorder()
+	jobManager := jobs.NewManager()
 	auth := tenantauth.New(tenantAPIKeys)
 
-	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, metricsRecorder, auth, corpus)
+	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, metricsRecorder, jobManager, auth, corpus)
 	log.Println("Go API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)

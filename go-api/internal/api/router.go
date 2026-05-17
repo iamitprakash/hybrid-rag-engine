@@ -10,6 +10,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/chunking"
+	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
 	"hybrid-rag-engine/go-api/internal/quality"
@@ -23,7 +24,7 @@ type ingestRequest struct {
 	Chunking  chunking.Options       `json:"chunking"`
 }
 
-func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, metricsRecorder *metrics.Recorder, auth *tenantauth.Auth, corpus []retrieval.Document) *gin.Engine {
+func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, metricsRecorder *metrics.Recorder, jobManager *jobs.Manager, auth *tenantauth.Auth, corpus []retrieval.Document) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(func(c *gin.Context) {
@@ -174,6 +175,46 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			"documents": len(req.Documents),
 			"chunks":    len(chunks),
 		})
+	})
+
+	router.POST("/ingest/async", func(c *gin.Context) {
+		var req ingestRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		tenant := tenantFromContext(c)
+		req.Documents = withTenantRawDocuments(req.Documents, tenant)
+		ctx := context.Background()
+		job := jobManager.Start(ctx, "ingest", tenant, func(context.Context) (jobs.IngestResult, error) {
+			chunks := chunking.ChunkDocuments(req.Documents, req.Chunking)
+			if err := metadataStore.UpsertRawDocuments(ctx, req.Documents); err != nil {
+				return jobs.IngestResult{}, err
+			}
+			if err := embedAndUpsert(ctx, ai, vectorClient, chunks); err != nil {
+				return jobs.IngestResult{}, err
+			}
+			if err := metadataStore.UpsertChunks(ctx, chunks); err != nil {
+				return jobs.IngestResult{}, err
+			}
+			bm25Index.AddDocuments(chunks)
+			return jobs.IngestResult{Documents: len(req.Documents), Chunks: len(chunks)}, nil
+		})
+		c.JSON(http.StatusAccepted, job)
+	})
+
+	router.GET("/jobs/:id", func(c *gin.Context) {
+		job, ok := jobManager.Get(c.Param("id"))
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+			return
+		}
+		tenant := tenantFromContext(c)
+		if tenant != "" && job.Tenant != tenant {
+			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+			return
+		}
+		c.JSON(http.StatusOK, job)
 	})
 
 	router.GET("/documents", func(c *gin.Context) {
