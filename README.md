@@ -180,6 +180,25 @@ Returns in-process retrieval quality and operational counters:
 }
 ```
 
+### `POST /evaluation/run`
+
+Runs a retrieval regression dataset through the live search pipeline and returns hit rate plus MRR:
+
+```json
+{
+  "top_k": 3,
+  "examples": [
+    {
+      "name": "hybrid-basics",
+      "query": "how does hybrid retrieval improve rag quality?",
+      "expected_ids": ["rag-001", "rag-002"]
+    }
+  ]
+}
+```
+
+Sample dataset: [sample_dataset.json](/Users/amitprakash/Documents/New%20project/hybrid-rag-engine/evaluation/sample_dataset.json)
+
 ### `POST /ingest/sample`
 
 Embeds and upserts the built-in sample corpus into Qdrant.
@@ -327,6 +346,6 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add evaluation datasets and retrieval regression reports.
 - Add persistent job storage for async ingestion.
 - Add batched worker pools for embedding-heavy ingest workloads.
+- Add external trace exporters and metrics backends.

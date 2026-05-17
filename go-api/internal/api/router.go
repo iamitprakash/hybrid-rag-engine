@@ -10,6 +10,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/chunking"
+	"hybrid-rag-engine/go-api/internal/evaluation"
 	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
@@ -242,6 +243,24 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 
 	router.GET("/metrics", func(c *gin.Context) {
 		c.JSON(http.StatusOK, metricsRecorder.Snapshot())
+	})
+
+	router.POST("/evaluation/run", func(c *gin.Context) {
+		var req evaluation.Request
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		tenant := tenantFromContext(c)
+		for index := range req.Examples {
+			req.Examples[index].Filters = scopedFilters(req.Examples[index].Filters, tenant)
+		}
+		report, err := evaluation.Run(c.Request.Context(), orchestrator, req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, report)
 	})
 
 	return router

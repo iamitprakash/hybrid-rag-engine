@@ -1,0 +1,15 @@
+{
+  "top_k": 3,
+  "examples": [
+    {
+      "name": "hybrid-basics",
+      "query": "how does hybrid retrieval improve rag quality?",
+      "expected_ids": ["rag-001", "rag-002"]
+    },
+    {
+      "name": "vector-search",
+      "query": "what does qdrant do in this architecture?",
+      "expected_ids": ["rag-004"]
+    }
+  ]
+}
