@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"sort"
 	"sync"
 	"time"
 )
@@ -34,12 +35,13 @@ type Job struct {
 }
 
 type Manager struct {
-	mu   sync.RWMutex
-	jobs map[string]Job
+	mu    sync.RWMutex
+	jobs  map[string]Job
+	store *Store
 }
 
-func NewManager() *Manager {
-	return &Manager{jobs: map[string]Job{}}
+func NewManager(store *Store) *Manager {
+	return &Manager{jobs: map[string]Job{}, store: store}
 }
 
 func (m *Manager) Start(ctx context.Context, jobType string, tenant string, run func(context.Context) (IngestResult, error)) Job {
@@ -76,15 +78,50 @@ func (m *Manager) Start(ctx context.Context, jobType string, tenant string, run 
 
 func (m *Manager) Get(id string) (Job, bool) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	job, ok := m.jobs[id]
-	return job, ok
+	m.mu.RUnlock()
+	if ok {
+		return job, true
+	}
+	if m.store != nil && m.store.Enabled() {
+		job, ok, err := m.store.Get(context.Background(), id)
+		if err == nil && ok {
+			m.save(job)
+			return job, true
+		}
+	}
+	return Job{}, false
+}
+
+func (m *Manager) ListRecent(ctx context.Context, tenant string, limit int) ([]Job, error) {
+	if m.store != nil && m.store.Enabled() {
+		return m.store.ListRecent(ctx, tenant, limit)
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	jobs := make([]Job, 0, len(m.jobs))
+	for _, job := range m.jobs {
+		if tenant != "" && job.Tenant != tenant {
+			continue
+		}
+		jobs = append(jobs, job)
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt.After(jobs[j].CreatedAt)
+	})
+	if limit > 0 && len(jobs) > limit {
+		jobs = jobs[:limit]
+	}
+	return jobs, nil
 }
 
 func (m *Manager) save(job Job) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.jobs[job.ID] = job
+	m.mu.Unlock()
+	if m.store != nil && m.store.Enabled() {
+		_ = m.store.Save(context.Background(), job)
+	}
 }
 
 func randomID() string {

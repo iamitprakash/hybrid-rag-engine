@@ -58,7 +58,7 @@ func TestSearchEndpointAddsGroundingAndCache(t *testing.T) {
 	aiClient.SetHTTPClient(&http.Client{Transport: fakeAITransport{}})
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(), tenantauth.New(""), nil)
+	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New(""), nil)
 
 	body := []byte(`{"query":"hybrid retrieval","top_k":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewReader(body))
@@ -83,7 +83,7 @@ func TestSearchRequiresTenantAPIKeyWhenConfigured(t *testing.T) {
 	aiClient := retrieval.NewAIClient("http://fake", 0)
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(), tenantauth.New("tenant-a:secret"), nil)
+	router := api.NewRouter(orchestrator, aiClient, nil, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New("tenant-a:secret"), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewBufferString(`{"query":"hybrid retrieval"}`))
 	req.Header.Set("Content-Type", "application/json")

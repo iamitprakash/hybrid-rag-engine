@@ -218,6 +218,19 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 		c.JSON(http.StatusOK, job)
 	})
 
+	router.GET("/jobs", func(c *gin.Context) {
+		tenant := tenantFromContext(c)
+		list, err := jobManager.ListRecent(c.Request.Context(), tenant, 100)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"count": len(list),
+			"jobs":  list,
+		})
+	})
+
 	router.GET("/documents", func(c *gin.Context) {
 		tenant := tenantFromContext(c)
 		if metadataStore.Enabled() {

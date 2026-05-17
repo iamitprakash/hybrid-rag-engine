@@ -259,6 +259,10 @@ Returns job state for async ingestion:
 }
 ```
 
+### `GET /jobs`
+
+Lists recent async ingestion jobs. When PostgreSQL is configured, job state survives process restarts.
+
 ### `GET /documents`
 
 Returns the active chunk corpus. If PostgreSQL is configured, this reads durable metadata from Postgres; otherwise it returns the in-memory BM25 corpus.
@@ -346,6 +350,5 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add persistent job storage for async ingestion.
 - Add batched worker pools for embedding-heavy ingest workloads.
 - Add external trace exporters and metrics backends.

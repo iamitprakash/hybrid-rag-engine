@@ -73,7 +73,13 @@ func Run() {
 	defer metadataStore.Close()
 
 	metricsRecorder := metrics.NewRecorder()
-	jobManager := jobs.NewManager()
+	jobStore, err := jobs.NewStore(ctx, postgresDSN)
+	if err != nil {
+		log.Printf("job store disabled: %v", err)
+		jobStore, _ = jobs.NewStore(context.Background(), "")
+	}
+	defer jobStore.Close()
+	jobManager := jobs.NewManager(jobStore)
 	auth := tenantauth.New(tenantAPIKeys)
 
 	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, metricsRecorder, jobManager, auth, corpus)
