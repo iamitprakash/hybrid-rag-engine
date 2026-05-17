@@ -11,11 +11,22 @@ import (
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/llm"
 	"hybrid-rag-engine/go-api/internal/metadata"
+	"hybrid-rag-engine/go-api/internal/observability"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/vector"
 )
 
 func Run() {
+	shutdownTracing, err := observability.InitTracing(context.Background(), "hybrid-rag-go-api")
+	if err != nil {
+		log.Printf("tracing disabled: %v", err)
+	}
+	defer func() {
+		if shutdownTracing != nil {
+			_ = shutdownTracing(context.Background())
+		}
+	}()
+
 	aiBaseURL := env("AI_SERVICE_URL", "http://localhost:8000")
 	qdrantURL := env("QDRANT_URL", "http://localhost:6333")
 	collection := env("QDRANT_COLLECTION", "documents")

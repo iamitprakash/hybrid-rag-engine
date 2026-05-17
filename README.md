@@ -126,6 +126,14 @@ POSTGRES_DSN=postgres://rag:rag@localhost:5432/rag?sslmode=disable
 
 When configured, the Go service creates `documents` and `chunks` tables on startup and `/documents` reads from Postgres. Without `POSTGRES_DSN`, the service keeps using the in-memory BM25 corpus for local development.
 
+Enable local OpenTelemetry trace output:
+
+```bash
+OTEL_TRACES_EXPORTER=stdout
+```
+
+Tracing is disabled by default. When enabled, the Go service emits spans for embedding generation, BM25 retrieval, vector retrieval, rank fusion, reranking, and synthesis.
+
 ## API
 
 ### `GET /health`
@@ -249,5 +257,4 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add OpenTelemetry spans for embedding, BM25, vector search, fusion, reranking, and synthesis.
 - Add retrieval quality metrics and hallucination checks.
