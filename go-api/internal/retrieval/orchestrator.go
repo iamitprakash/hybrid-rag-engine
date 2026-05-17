@@ -16,7 +16,8 @@ type VectorSearcher interface {
 }
 
 type Synthesizer interface {
-	Synthesize(query string, docs []Document) string
+	Synthesize(ctx context.Context, query string, docs []Document) (string, error)
+	Stream(ctx context.Context, query string, docs []Document) (<-chan string, <-chan error)
 }
 
 type Orchestrator struct {
@@ -31,13 +32,40 @@ func NewOrchestrator(bm25 BM25Searcher, vector VectorSearcher, ai *AIClient, syn
 }
 
 func (o *Orchestrator) Search(ctx context.Context, query string, topK int) (SearchResponse, error) {
+	reranked, trace, err := o.Retrieve(ctx, query, topK)
+	if err != nil {
+		return SearchResponse{}, err
+	}
+	answer, err := o.synthesizer.Synthesize(ctx, query, reranked)
+	if err != nil {
+		return SearchResponse{}, err
+	}
+
+	return SearchResponse{
+		Query:     query,
+		Answer:    answer,
+		Documents: reranked,
+		Trace:     trace,
+	}, nil
+}
+
+func (o *Orchestrator) Stream(ctx context.Context, query string, topK int) (<-chan string, <-chan error, []Document, Trace, error) {
+	reranked, trace, err := o.Retrieve(ctx, query, topK)
+	if err != nil {
+		return nil, nil, nil, Trace{}, err
+	}
+	tokens, errs := o.synthesizer.Stream(ctx, query, reranked)
+	return tokens, errs, reranked, trace, nil
+}
+
+func (o *Orchestrator) Retrieve(ctx context.Context, query string, topK int) ([]Document, Trace, error) {
 	if topK <= 0 {
 		topK = 5
 	}
 
 	embedding, err := o.ai.Embed(query)
 	if err != nil {
-		return SearchResponse{}, err
+		return nil, Trace{}, err
 	}
 
 	var bm25Docs []Document
@@ -58,29 +86,23 @@ func (o *Orchestrator) Search(ctx context.Context, query string, topK int) (Sear
 
 	wg.Wait()
 	if vectorErr != nil {
-		return SearchResponse{}, vectorErr
+		return nil, Trace{}, vectorErr
 	}
 
 	fused := reciprocalRankFusion(bm25Docs, vectorDocs)
 	if len(fused) == 0 {
-		return SearchResponse{}, errors.New("no retrieval candidates found")
+		return nil, Trace{}, errors.New("no retrieval candidates found")
 	}
 	reranked, err := o.ai.Rerank(query, fused, topK)
 	if err != nil {
-		return SearchResponse{}, err
+		return nil, Trace{}, err
 	}
-	answer := o.synthesizer.Synthesize(query, reranked)
 
-	return SearchResponse{
-		Query:     query,
-		Answer:    answer,
-		Documents: reranked,
-		Trace: Trace{
-			BM25Hits:     len(bm25Docs),
-			VectorHits:   len(vectorDocs),
-			FusedHits:    len(fused),
-			RerankedHits: len(reranked),
-		},
+	return reranked, Trace{
+		BM25Hits:     len(bm25Docs),
+		VectorHits:   len(vectorDocs),
+		FusedHits:    len(fused),
+		RerankedHits: len(reranked),
 	}, nil
 }
 

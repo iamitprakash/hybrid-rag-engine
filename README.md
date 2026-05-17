@@ -41,6 +41,14 @@ curl -X POST http://localhost:8080/search \
   -d '{"query":"how does hybrid retrieval improve rag quality?","top_k":5}'
 ```
 
+Stream a grounded answer with server-sent events:
+
+```bash
+curl -N -X POST http://localhost:8080/search/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"how does hybrid retrieval improve rag quality?","top_k":5}'
+```
+
 ## Local Development
 
 Run the Python service:
@@ -73,6 +81,23 @@ DISABLE_MODELS=true
 ```
 
 The AI service then uses deterministic hash embeddings and lexical reranking.
+
+Configure OpenAI-compatible synthesis:
+
+```bash
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=gpt-4o-mini
+```
+
+For Groq, use:
+
+```bash
+LLM_BASE_URL=https://api.groq.com/openai/v1
+LLM_MODEL=llama-3.1-8b-instant
+```
+
+If `LLM_API_KEY` is empty, the Go service uses a deterministic local synthesis fallback.
 
 ## API
 
@@ -150,6 +175,15 @@ Response:
 }
 ```
 
+### `POST /search/stream`
+
+Runs the same retrieval and reranking pipeline as `/search`, then streams synthesis as server-sent events:
+
+- `retrieval`: ranked documents and retrieval trace
+- `token`: incremental answer text
+- `error`: synthesis error, if one occurs
+- `done`: terminal event
+
 ## Repository Layout
 
 ```text
@@ -180,8 +214,7 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Replace synthesis stub with OpenAI/Groq compatible streaming synthesis.
-- Add document upload, chunking, and metadata filtering.
+- Add metadata filtering.
 - Add PostgreSQL for document metadata and Redis for query cache.
 - Add OpenTelemetry spans for embedding, BM25, vector search, fusion, reranking, and synthesis.
 - Add retrieval quality metrics and hallucination checks.

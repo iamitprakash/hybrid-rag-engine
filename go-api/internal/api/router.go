@@ -39,6 +39,49 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 		c.JSON(http.StatusOK, resp)
 	})
 
+	router.POST("/search/stream", func(c *gin.Context) {
+		var req retrieval.SearchRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		tokens, errs, docs, trace, err := orchestrator.Stream(c.Request.Context(), req.Query, req.TopK)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+
+		c.SSEvent("retrieval", gin.H{
+			"query":     req.Query,
+			"trace":     trace,
+			"documents": docs,
+		})
+		c.Writer.Flush()
+
+		for {
+			select {
+			case token, ok := <-tokens:
+				if !ok {
+					if err := <-errs; err != nil {
+						c.SSEvent("error", gin.H{"error": err.Error()})
+					}
+					c.SSEvent("done", gin.H{"ok": true})
+					c.Writer.Flush()
+					return
+				}
+				c.SSEvent("token", token)
+				c.Writer.Flush()
+			case <-c.Request.Context().Done():
+				return
+			}
+		}
+	})
+
 	router.POST("/ingest/sample", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()

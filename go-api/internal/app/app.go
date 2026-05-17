@@ -16,6 +16,9 @@ func Run() {
 	aiBaseURL := env("AI_SERVICE_URL", "http://localhost:8000")
 	qdrantURL := env("QDRANT_URL", "http://localhost:6333")
 	collection := env("QDRANT_COLLECTION", "documents")
+	llmBaseURL := env("LLM_BASE_URL", "https://api.openai.com/v1")
+	llmAPIKey := env("LLM_API_KEY", "")
+	llmModel := env("LLM_MODEL", "gpt-4o-mini")
 
 	corpus := retrieval.SampleDocuments()
 	bm25Index := bm25.NewIndex(corpus)
@@ -25,7 +28,12 @@ func Run() {
 		bm25Index,
 		vectorClient,
 		aiClient,
-		llm.NewSynthesizer(),
+		llm.NewSynthesizer(llm.Config{
+			BaseURL: llmBaseURL,
+			APIKey:  llmAPIKey,
+			Model:   llmModel,
+			Timeout: 45 * time.Second,
+		}),
 	)
 
 	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, corpus)
