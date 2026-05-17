@@ -77,6 +77,7 @@ func Run() {
 	defer metadataStore.Close()
 
 	metricsRecorder := metrics.NewRecorder()
+	metricsBackend := observability.NewMetricsBackend()
 	jobStore, err := jobs.NewStore(ctx, postgresDSN)
 	if err != nil {
 		log.Printf("job store disabled: %v", err)
@@ -87,7 +88,7 @@ func Run() {
 	auth := tenantauth.New(tenantAPIKeys)
 	processor := ingest.NewProcessor(aiClient, vectorClient, ingestBatchSize, ingestWorkers)
 
-	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, metadataStore, metricsRecorder, jobManager, auth, corpus)
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, metadataStore, metricsRecorder, metricsBackend, jobManager, auth, corpus)
 	log.Println("Go API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)

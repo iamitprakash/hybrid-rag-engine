@@ -16,6 +16,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/jobs"
 	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/metrics"
+	"hybrid-rag-engine/go-api/internal/observability"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/tenantauth"
 )
@@ -60,7 +61,7 @@ func TestSearchEndpointAddsGroundingAndCache(t *testing.T) {
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
 	processor := ingest.NewProcessor(aiClient, fakeVectorWriterAdapter{}, 2, 1)
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New(""), nil)
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), &observability.MetricsBackend{}, jobs.NewManager(nil), tenantauth.New(""), nil)
 
 	body := []byte(`{"query":"hybrid retrieval","top_k":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewReader(body))
@@ -86,7 +87,7 @@ func TestSearchRequiresTenantAPIKeyWhenConfigured(t *testing.T) {
 	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
 	processor := ingest.NewProcessor(aiClient, fakeVectorWriterAdapter{}, 2, 1)
 	cacheClient, _ := cache.New("", 0)
-	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), jobs.NewManager(nil), tenantauth.New("tenant-a:secret"), nil)
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), &observability.MetricsBackend{}, jobs.NewManager(nil), tenantauth.New("tenant-a:secret"), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/search", bytes.NewBufferString(`{"query":"hybrid retrieval"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -95,6 +96,28 @@ func TestSearchRequiresTenantAPIKeyWhenConfigured(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestPrometheusMetricsEndpointWhenEnabled(t *testing.T) {
+	t.Setenv("PROMETHEUS_METRICS_ENABLED", "true")
+	bm25Index := bm25.NewIndex(nil)
+	aiClient := retrieval.NewAIClient("http://fake", 0)
+	orchestrator := retrieval.NewOrchestrator(bm25Index, fakeVector{}, aiClient, fakeSynth{})
+	processor := ingest.NewProcessor(aiClient, fakeVectorWriterAdapter{}, 2, 1)
+	cacheClient, _ := cache.New("", 0)
+	backend := observability.NewMetricsBackend()
+	router := api.NewRouter(orchestrator, processor, bm25Index, cacheClient, &metadata.Store{}, metrics.NewRecorder(), backend, jobs.NewManager(nil), tenantauth.New(""), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics/prometheus", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if len(rec.Body.String()) == 0 {
+		t.Fatal("expected prometheus payload")
 	}
 }
 

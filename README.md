@@ -151,6 +151,13 @@ OTEL_TRACES_EXPORTER=stdout
 
 Tracing is disabled by default. When enabled, the Go service emits spans for embedding generation, BM25 retrieval, vector retrieval, rank fusion, reranking, and synthesis.
 
+Export traces to an OTLP collector:
+
+```bash
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+```
+
 Enable authenticated multi-tenant isolation:
 
 ```bash
@@ -167,6 +174,14 @@ INGEST_WORKERS=4
 ```
 
 The Go service embeds documents in batches and processes each batch with a bounded worker pool before upserting vectors.
+
+Enable Prometheus metrics export:
+
+```bash
+PROMETHEUS_METRICS_ENABLED=true
+```
+
+When enabled, Prometheus can scrape `GET /metrics/prometheus` while the existing `GET /metrics` JSON endpoint remains available for quick inspection.
 
 ## API
 
@@ -188,6 +203,10 @@ Returns in-process retrieval quality and operational counters:
   "high_risk_grounding_hits": 1
 }
 ```
+
+### `GET /metrics/prometheus`
+
+Available when `PROMETHEUS_METRICS_ENABLED=true`. Exposes Prometheus counters and histograms for search request volume, cache hits, errors, latency, and grounding quality.
 
 ### `POST /evaluation/run`
 
@@ -359,4 +378,6 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add external trace exporters and metrics backends.
+- Add persistent vector/BM25 backfill workers.
+- Add distributed async job execution.
+- Add evaluation diff tooling against saved baseline runs.
