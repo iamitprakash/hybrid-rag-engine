@@ -10,6 +10,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/chunking"
+	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/vector"
 )
@@ -19,7 +20,7 @@ type ingestRequest struct {
 	Chunking  chunking.Options       `json:"chunking"`
 }
 
-func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, corpus []retrieval.Document) *gin.Engine {
+func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vectorClient *vector.Client, bm25Index *bm25.Index, cacheClient *cache.Client, metadataStore *metadata.Store, corpus []retrieval.Document) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
@@ -100,6 +101,10 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		if err := metadataStore.UpsertChunks(ctx, corpus); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"ingested": len(corpus)})
 	})
 
@@ -118,7 +123,15 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
 		defer cancel()
 
+		if err := metadataStore.UpsertRawDocuments(ctx, req.Documents); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		if err := embedAndUpsert(ctx, ai, vectorClient, chunks); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if err := metadataStore.UpsertChunks(ctx, chunks); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -130,10 +143,24 @@ func NewRouter(orchestrator *retrieval.Orchestrator, ai *retrieval.AIClient, vec
 	})
 
 	router.GET("/documents", func(c *gin.Context) {
+		if metadataStore.Enabled() {
+			docs, err := metadataStore.ListChunks(c.Request.Context(), 100)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"count":     len(docs),
+				"documents": docs,
+				"store":     "postgres",
+			})
+			return
+		}
 		docs := bm25Index.Documents()
 		c.JSON(http.StatusOK, gin.H{
 			"count":     len(docs),
 			"documents": docs,
+			"store":     "memory",
 		})
 	})
 

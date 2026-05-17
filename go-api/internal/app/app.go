@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"hybrid-rag-engine/go-api/internal/bm25"
 	"hybrid-rag-engine/go-api/internal/cache"
 	"hybrid-rag-engine/go-api/internal/llm"
+	"hybrid-rag-engine/go-api/internal/metadata"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 	"hybrid-rag-engine/go-api/internal/vector"
 )
@@ -22,6 +24,7 @@ func Run() {
 	llmModel := env("LLM_MODEL", "gpt-4o-mini")
 	redisURL := env("REDIS_URL", "")
 	cacheTTL := durationEnv("CACHE_TTL", 5*time.Minute)
+	postgresDSN := env("POSTGRES_DSN", "")
 
 	corpus := retrieval.SampleDocuments()
 	bm25Index := bm25.NewIndex(corpus)
@@ -45,7 +48,16 @@ func Run() {
 		cacheClient, _ = cache.New("", 0)
 	}
 
-	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, corpus)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	metadataStore, err := metadata.New(ctx, postgresDSN)
+	if err != nil {
+		log.Printf("metadata store disabled: %v", err)
+		metadataStore, _ = metadata.New(context.Background(), "")
+	}
+	defer metadataStore.Close()
+
+	router := api.NewRouter(orchestrator, aiClient, vectorClient, bm25Index, cacheClient, metadataStore, corpus)
 	log.Println("Go API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)

@@ -21,6 +21,7 @@ Client Query
 - `ai-service`: FastAPI service for embeddings and reranking with Sentence Transformers.
 - `qdrant`: Vector database for semantic search.
 - `redis`: Optional query cache for repeated non-stream search requests.
+- `postgres`: Optional durable metadata store for source documents and chunks.
 
 ## Quick Start
 
@@ -117,6 +118,14 @@ CACHE_TTL=5m
 
 If `REDIS_URL` is empty or invalid, search still works without caching.
 
+Configure PostgreSQL metadata storage:
+
+```bash
+POSTGRES_DSN=postgres://rag:rag@localhost:5432/rag?sslmode=disable
+```
+
+When configured, the Go service creates `documents` and `chunks` tables on startup and `/documents` reads from Postgres. Without `POSTGRES_DSN`, the service keeps using the in-memory BM25 corpus for local development.
+
 ## API
 
 ### `GET /health`
@@ -164,7 +173,7 @@ Response:
 
 ### `GET /documents`
 
-Returns the active in-memory BM25 corpus. This is useful during local development to verify ingested chunks.
+Returns the active chunk corpus. If PostgreSQL is configured, this reads durable metadata from Postgres; otherwise it returns the in-memory BM25 corpus.
 
 ### `POST /search`
 
@@ -221,6 +230,7 @@ hybrid-rag-engine/
 │   │   ├── bm25/
 │   │   ├── fusion/
 │   │   ├── llm/
+│   │   ├── metadata/
 │   │   ├── retrieval/
 │   │   └── vector/
 │   ├── Dockerfile
@@ -239,6 +249,5 @@ hybrid-rag-engine/
 
 ## Next Milestones
 
-- Add PostgreSQL for durable document metadata.
 - Add OpenTelemetry spans for embedding, BM25, vector search, fusion, reranking, and synthesis.
 - Add retrieval quality metrics and hallucination checks.
