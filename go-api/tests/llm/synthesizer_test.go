@@ -1,4 +1,4 @@
-package llm
+package llmtest
 
 import (
 	"context"
@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"hybrid-rag-engine/go-api/internal/llm"
 	"hybrid-rag-engine/go-api/internal/retrieval"
 )
 
 func TestSynthesizerFallsBackWithoutAPIKey(t *testing.T) {
-	synth := NewSynthesizer(Config{})
+	synth := llm.NewSynthesizer(llm.Config{})
 	answer, err := synth.Synthesize(context.Background(), "what is hybrid retrieval?", []retrieval.Document{
 		{Title: "Hybrid Retrieval", Content: "Hybrid retrieval combines BM25 and vector search."},
 	})
@@ -36,7 +37,7 @@ func TestSynthesizerCallsOpenAICompatibleEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	synth := NewSynthesizer(Config{BaseURL: server.URL, APIKey: "test-key", Model: "test-model"})
+	synth := llm.NewSynthesizer(llm.Config{BaseURL: server.URL, APIKey: "test-key", Model: "test-model"})
 	answer, err := synth.Synthesize(context.Background(), "query", []retrieval.Document{
 		{Title: "Doc", Content: "Context"},
 	})
@@ -45,5 +46,29 @@ func TestSynthesizerCallsOpenAICompatibleEndpoint(t *testing.T) {
 	}
 	if answer != "grounded answer" {
 		t.Fatalf("unexpected answer: %q", answer)
+	}
+}
+
+func TestSynthesizerStreamsRemoteTokens(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	synth := llm.NewSynthesizer(llm.Config{BaseURL: server.URL, APIKey: "test-key", Model: "test-model"})
+	tokens, errs := synth.Stream(context.Background(), "query", []retrieval.Document{{Title: "Doc", Content: "Context"}})
+
+	var builder strings.Builder
+	for token := range tokens {
+		builder.WriteString(token)
+	}
+	if err := <-errs; err != nil {
+		t.Fatalf("unexpected stream error: %v", err)
+	}
+	if builder.String() != "hello world" {
+		t.Fatalf("unexpected token stream: %q", builder.String())
 	}
 }

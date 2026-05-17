@@ -38,6 +38,12 @@ func NewAIClient(baseURL string, timeout time.Duration) *AIClient {
 	}
 }
 
+func (c *AIClient) SetHTTPClient(client *http.Client) {
+	if client != nil {
+		c.client = client
+	}
+}
+
 func (c *AIClient) Embed(text string) ([]float32, error) {
 	var out embedResponse
 	if err := c.post("/embed", embedRequest{Text: text}, &out); err != nil {
